@@ -110,14 +110,15 @@ cmd_update() {
     local TMPFILE
     TMPFILE=$(mktemp "${PREFIX:-/tmp}/tmp/update-core.XXXXXX.sh" 2>/dev/null) \
         || TMPFILE=$(mktemp /tmp/update-core.XXXXXX.sh)
-    trap 'rm -f "$TMPFILE"' EXIT
 
     if ! curl -sfL "$REPO_BASE/update-core.sh" -o "$TMPFILE"; then
+        rm -f "$TMPFILE"
         echo -e "${RED}[FAIL]${NC} Failed to download update-core.sh"
         exit 1
     fi
 
     bash "$TMPFILE" 2>&1 | tee "$LOGFILE"
+    rm -f "$TMPFILE"
 
     echo ""
     echo -e "${YELLOW}Log saved to $LOGFILE${NC}"

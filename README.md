@@ -364,7 +364,7 @@ Validates that the current environment is suitable before starting installation.
 - **Disk space**: Ensures at least 1000MB free on the `$PREFIX` partition. Errors if insufficient
 - **Existing installation**: If `openclaw` command already exists, shows current version and notes this is a reinstall/upgrade
 - **Node.js pre-check**: If Node.js is already installed, shows version and warns if below 22
-- **Phantom Process Killer** (Android 12+): Reads `settings_enable_monitor_phantom_procs` via `getprop`/`settings`. If active, warns that background processes may be killed and shows ADB commands to disable it
+- **Phantom Process Killer** (Android 12+): Shows an informational note about the Phantom Process Killer with a link to the [disable guide](docs/disable-phantom-process-killer.md)
 
 ### [2/11] Base Dependencies — `scripts/install-deps.sh`
 
@@ -533,7 +533,7 @@ Validates the minimum conditions for updating.
 - Checks `curl` is available (needed to download files)
 - Detects architecture: glibc (`.glibc-arch` marker) or Bionic (legacy)
 - Migrates old directory name if needed (`.openclaw-lite` → `.openclaw-android` — legacy compatibility)
-- **Phantom Process Killer** (Android 12+): Same check as the full installer — warns if active and shows ADB commands to disable it
+- **Phantom Process Killer** (Android 12+): Shows an informational note with a link to the [disable guide](docs/disable-phantom-process-killer.md)
 
 ### [2/10] Installing New Packages
 

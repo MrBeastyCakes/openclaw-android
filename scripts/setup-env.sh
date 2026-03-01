@@ -32,8 +32,7 @@ touch "$BASHRC"
 
 # Check if block already exists
 if grep -qF "$MARKER_START" "$BASHRC"; then
-    echo -e "${YELLOW}[SKIP]${NC} Environment block already exists in $BASHRC"
-    echo "       Removing old block and re-adding..."
+    echo -e "${GREEN}[OK]${NC}   Refreshing environment block in $BASHRC"
     # Remove old block
     sed -i "/${MARKER_START//\//\\/}/,/${MARKER_END//\//\\/}/d" "$BASHRC"
 fi

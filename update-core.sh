@@ -13,7 +13,7 @@ NC='\033[0m'
 
 REPO_BASE="https://raw.githubusercontent.com/AidanPark/openclaw-android/main"
 OPENCLAW_DIR="$HOME/.openclaw-android"
-OA_VERSION="1.0.0"
+OA_VERSION="1.0.1"
 
 echo ""
 echo -e "${BOLD}========================================${NC}"
@@ -75,26 +75,11 @@ else
     echo -e "${YELLOW}[INFO]${NC} Architecture: Bionic (will migrate to glibc)"
 fi
 
-# Check Phantom Process Killer (Android 12+, API 31+)
+# Note about Phantom Process Killer (Android 12+, API 31+)
 SDK_INT=$(getprop ro.build.version.sdk 2>/dev/null || echo "0")
 if [ "$SDK_INT" -ge 31 ] 2>/dev/null; then
-    PPK_VALUE=$(/system/bin/settings get global settings_enable_monitor_phantom_procs 2>/dev/null || echo "")
-    if [ "$PPK_VALUE" = "false" ]; then
-        echo -e "${GREEN}[OK]${NC}   Phantom Process Killer disabled"
-    else
-        echo -e "${YELLOW}[WARN]${NC} Phantom Process Killer is active"
-        echo "       Background processes (openclaw, sshd, etc.) may be killed by Android."
-        echo "       To disable, run these commands:"
-        echo ""
-        echo "       1. Enable 'Wireless debugging' in Developer options"
-        echo "       2. Tap 'Pair device with pairing code' and run:"
-        echo "          adb pair localhost:<PORT> <PAIRING_CODE>"
-        echo "       3. Connect (use the port shown on Wireless debugging main screen):"
-        echo "          adb connect localhost:<PORT>"
-        echo "       4. Disable Phantom Process Killer:"
-        echo "          adb shell \"settings put global settings_enable_monitor_phantom_procs false\""
-        echo ""
-    fi
+    echo -e "${YELLOW}[INFO]${NC} Android 12+ detected — if background processes get killed (signal 9),"
+    echo "       see: https://github.com/AidanPark/openclaw-android/blob/main/docs/disable-phantom-process-killer.md"
 fi
 
 # ─────────────────────────────────────────────
@@ -104,11 +89,20 @@ step 2 "Installing New Packages"
 if command -v ttyd &>/dev/null; then
     echo -e "${GREEN}[OK]${NC}   ttyd already installed ($(ttyd --version 2>/dev/null || echo ""))"
 else
-    echo "Installing ttyd..."
-    if pkg install -y ttyd; then
-        echo -e "${GREEN}[OK]${NC}   ttyd installed"
+    INSTALL_TTYD=true
+    if [ -t 0 ]; then
+        read -rp "ttyd (web terminal) is not installed. Install it? [Y/n] " REPLY
+        [[ "$REPLY" =~ ^[Nn]$ ]] && INSTALL_TTYD=false
+    fi
+    if [ "$INSTALL_TTYD" = true ]; then
+        echo "Installing ttyd..."
+        if pkg install -y ttyd; then
+            echo -e "${GREEN}[OK]${NC}   ttyd installed"
+        else
+            echo -e "${YELLOW}[WARN]${NC} Failed to install ttyd (non-critical)"
+        fi
     else
-        echo -e "${YELLOW}[WARN]${NC} Failed to install ttyd (non-critical)"
+        echo -e "${YELLOW}[SKIP]${NC} Skipping ttyd"
     fi
 fi
 
@@ -116,11 +110,20 @@ fi
 if command -v dufs &>/dev/null; then
     echo -e "${GREEN}[OK]${NC}   dufs already installed ($(dufs --version 2>/dev/null || echo ""))"
 else
-    echo "Installing dufs..."
-    if pkg install -y dufs; then
-        echo -e "${GREEN}[OK]${NC}   dufs installed"
+    INSTALL_DUFS=true
+    if [ -t 0 ]; then
+        read -rp "dufs (file server) is not installed. Install it? [Y/n] " REPLY
+        [[ "$REPLY" =~ ^[Nn]$ ]] && INSTALL_DUFS=false
+    fi
+    if [ "$INSTALL_DUFS" = true ]; then
+        echo "Installing dufs..."
+        if pkg install -y dufs; then
+            echo -e "${GREEN}[OK]${NC}   dufs installed"
+        else
+            echo -e "${YELLOW}[WARN]${NC} Failed to install dufs (non-critical)"
+        fi
     else
-        echo -e "${YELLOW}[WARN]${NC} Failed to install dufs (non-critical)"
+        echo -e "${YELLOW}[SKIP]${NC} Skipping dufs"
     fi
 fi
 
@@ -128,11 +131,20 @@ fi
 if command -v adb &>/dev/null; then
     echo -e "${GREEN}[OK]${NC}   android-tools already installed"
 else
-    echo "Installing android-tools..."
-    if pkg install -y android-tools; then
-        echo -e "${GREEN}[OK]${NC}   android-tools installed"
+    INSTALL_ADB=true
+    if [ -t 0 ]; then
+        read -rp "android-tools (adb) is not installed. Install it? [Y/n] " REPLY
+        [[ "$REPLY" =~ ^[Nn]$ ]] && INSTALL_ADB=false
+    fi
+    if [ "$INSTALL_ADB" = true ]; then
+        echo "Installing android-tools..."
+        if pkg install -y android-tools; then
+            echo -e "${GREEN}[OK]${NC}   android-tools installed"
+        else
+            echo -e "${YELLOW}[WARN]${NC} Failed to install android-tools (non-critical)"
+        fi
     else
-        echo -e "${YELLOW}[WARN]${NC} Failed to install android-tools (non-critical)"
+        echo -e "${YELLOW}[SKIP]${NC} Skipping android-tools"
     fi
 fi
 
@@ -437,11 +449,20 @@ step 7 "Updating clawhub (skill manager)"
 if command -v clawhub &>/dev/null; then
     echo -e "${GREEN}[OK]${NC}   clawhub already installed"
 else
-    echo "Installing clawhub..."
-    if npm install -g clawdhub --no-fund --no-audit; then
-        echo -e "${GREEN}[OK]${NC}   clawhub installed"
+    INSTALL_CLAWHUB=true
+    if [ -t 0 ]; then
+        read -rp "clawhub (skill manager) is not installed. Install it? [Y/n] " REPLY
+        [[ "$REPLY" =~ ^[Nn]$ ]] && INSTALL_CLAWHUB=false
+    fi
+    if [ "$INSTALL_CLAWHUB" = true ]; then
+        echo "Installing clawhub..."
+        if npm install -g clawdhub --no-fund --no-audit; then
+            echo -e "${GREEN}[OK]${NC}   clawhub installed"
+        else
+            echo -e "${YELLOW}[WARN]${NC} clawhub installation failed (non-critical)"
+        fi
     else
-        echo -e "${YELLOW}[WARN]${NC} clawhub installation failed (non-critical)"
+        echo -e "${YELLOW}[SKIP]${NC} Skipping clawhub"
     fi
 fi
 
@@ -491,10 +512,35 @@ fi
 step 8 "Updating code-server (IDE)"
 
 if [ -n "$CS_TMPFILE" ]; then
-    if bash "$CS_TMPFILE" update; then
-        echo -e "${GREEN}[OK]${NC}   code-server update step complete"
+    CS_INSTALLED=false
+    command -v code-server &>/dev/null && CS_INSTALLED=true
+
+    if [ "$CS_INSTALLED" = true ]; then
+        # Already installed — update
+        if bash "$CS_TMPFILE" update; then
+            echo -e "${GREEN}[OK]${NC}   code-server update step complete"
+        else
+            echo -e "${YELLOW}[WARN]${NC} code-server update failed (non-critical)"
+        fi
     else
-        echo -e "${YELLOW}[WARN]${NC} code-server update failed (non-critical)"
+        # Not installed — ask user
+        INSTALL_CS=false
+        if [ -t 0 ]; then
+            read -rp "code-server (browser IDE) is not installed. Install it? [Y/n] " REPLY
+            [[ ! "$REPLY" =~ ^[Nn]$ ]] && INSTALL_CS=true
+        else
+            INSTALL_CS=true  # auto-install in non-interactive mode
+        fi
+        if [ "$INSTALL_CS" = true ]; then
+            echo "  (This may take a few minutes — downloading ~121MB)"
+            if bash "$CS_TMPFILE" install; then
+                echo -e "${GREEN}[OK]${NC}   code-server installed"
+            else
+                echo -e "${YELLOW}[WARN]${NC} code-server installation failed (non-critical)"
+            fi
+        else
+            echo -e "${YELLOW}[SKIP]${NC} Skipping code-server"
+        fi
     fi
     rm -f "$CS_TMPFILE"
 else
@@ -540,7 +586,25 @@ update_ai_tool "gemini" "@google/gemini-cli" "Gemini CLI" && AI_FOUND=true
 update_ai_tool "codex" "@openai/codex" "Codex CLI" && AI_FOUND=true
 
 if [ "$AI_FOUND" = false ]; then
-    echo -e "${YELLOW}[SKIP]${NC} No AI CLI tools installed"
+    if [ -t 0 ]; then
+        echo "No AI CLI tools are installed."
+        echo "Available: Claude Code (Anthropic), Gemini CLI (Google), Codex CLI (OpenAI)"
+        read -rp "Install AI CLI tools? [y/N] " REPLY
+        if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+            AI_TOOLS_TMPFILE=$(mktemp "$PREFIX/tmp/install-ai-tools.XXXXXX.sh") || true
+            if [ -n "$AI_TOOLS_TMPFILE" ] && curl -sfL "$REPO_BASE/scripts/install-ai-tools.sh" -o "$AI_TOOLS_TMPFILE"; then
+                bash "$AI_TOOLS_TMPFILE"
+                rm -f "$AI_TOOLS_TMPFILE"
+            else
+                echo -e "${YELLOW}[WARN]${NC} Failed to download AI tools installer"
+                rm -f "${AI_TOOLS_TMPFILE:-}"
+            fi
+        else
+            echo -e "${YELLOW}[SKIP]${NC} Skipping AI CLI tools"
+        fi
+    else
+        echo -e "${YELLOW}[SKIP]${NC} No AI CLI tools installed"
+    fi
 fi
 
 # ─────────────────────────────────────────────
@@ -553,22 +617,53 @@ OMO_INSTALLED=false
 [ -f "$PREFIX/bin/oh-my-opencode" ] && OMO_INSTALLED=true
 
 if [ "$OPENCODE_INSTALLED" = true ]; then
-    # Already installed → update automatically (no prompt needed)
-    OPENCODE_FLAGS=""
-    [ "$OMO_INSTALLED" = false ] && OPENCODE_FLAGS="--no-omo"
+    # Compare installed vs latest version to skip unnecessary reinstall
+    CURRENT_OC_VER=$(opencode --version 2>/dev/null || echo "")
+    LATEST_OC_VER=$(npm view opencode-ai version 2>/dev/null || echo "")
 
-    echo "OpenCode is installed — checking for updates..."
-    if [ "$IS_GLIBC" = true ] && [ -n "${OPENCODE_TMPFILE:-}" ]; then
-        echo "  (This may take a few minutes for package download and binary processing)"
-        if bash "$OPENCODE_TMPFILE" $OPENCODE_FLAGS; then
-            echo -e "${GREEN}[OK]${NC}   OpenCode update complete"
+    OC_NEEDS_UPDATE=false
+    if [ -n "$CURRENT_OC_VER" ] && [ -n "$LATEST_OC_VER" ]; then
+        if [ "$CURRENT_OC_VER" != "$LATEST_OC_VER" ]; then
+            OC_NEEDS_UPDATE=true
+            echo "OpenCode update available: $CURRENT_OC_VER → $LATEST_OC_VER"
         else
-            echo -e "${YELLOW}[WARN]${NC} OpenCode update failed (non-critical)"
+            echo -e "${GREEN}[OK]${NC}   OpenCode $CURRENT_OC_VER is already the latest"
         fi
-    elif [ "$IS_GLIBC" = false ]; then
-        echo -e "${YELLOW}[SKIP]${NC} OpenCode requires glibc architecture"
-    else
-        echo -e "${YELLOW}[SKIP]${NC} install-opencode.sh was not downloaded"
+    elif [ -z "$LATEST_OC_VER" ]; then
+        echo -e "${YELLOW}[WARN]${NC} Could not check latest OpenCode version"
+    fi
+
+    # Determine omo flag
+    OPENCODE_FLAGS=""
+    NEEDS_OMO_INSTALL=false
+    if [ "$OMO_INSTALLED" = false ]; then
+        # omo not installed — ask user in interactive mode
+        if [ -t 0 ]; then
+            read -rp "oh-my-opencode is not installed. Install it? [y/N] " REPLY
+            if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+                NEEDS_OMO_INSTALL=true
+            else
+                OPENCODE_FLAGS="--no-omo"
+            fi
+        else
+            OPENCODE_FLAGS="--no-omo"
+        fi
+    fi
+
+    # Only run install script if there's work to do
+    if [ "$OC_NEEDS_UPDATE" = true ] || [ "$NEEDS_OMO_INSTALL" = true ]; then
+        if [ "$IS_GLIBC" = true ] && [ -n "${OPENCODE_TMPFILE:-}" ]; then
+            echo "  (This may take a few minutes for package download and binary processing)"
+            if bash "$OPENCODE_TMPFILE" $OPENCODE_FLAGS; then
+                echo -e "${GREEN}[OK]${NC}   OpenCode update complete"
+            else
+                echo -e "${YELLOW}[WARN]${NC} OpenCode update failed (non-critical)"
+            fi
+        elif [ "$IS_GLIBC" = false ]; then
+            echo -e "${YELLOW}[SKIP]${NC} OpenCode requires glibc architecture"
+        else
+            echo -e "${YELLOW}[SKIP]${NC} install-opencode.sh was not downloaded"
+        fi
     fi
 else
     # Not installed → ask if user wants to install (only in interactive mode)

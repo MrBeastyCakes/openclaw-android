@@ -23,7 +23,7 @@ NODE_DIR="$OPENCLAW_DIR/node"
 GLIBC_LDSO="$PREFIX/glibc/lib/ld-linux-aarch64.so.1"
 
 # Node.js LTS version to install
-NODE_VERSION="22.14.0"
+NODE_VERSION="22.22.0"
 NODE_TARBALL="node-v${NODE_VERSION}-linux-arm64.tar.xz"
 NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}"
 
@@ -45,9 +45,18 @@ fi
 # Check if already installed
 if [ -x "$NODE_DIR/bin/node" ]; then
     if "$NODE_DIR/bin/node" --version &>/dev/null; then
-        NODE_VER=$("$NODE_DIR/bin/node" --version 2>/dev/null)
-        echo -e "${GREEN}[SKIP]${NC} Node.js already installed ($NODE_VER)"
-        exit 0
+        INSTALLED_VER=$("$NODE_DIR/bin/node" --version 2>/dev/null | sed 's/^v//')
+        if [ "$INSTALLED_VER" = "$NODE_VERSION" ]; then
+            echo -e "${GREEN}[SKIP]${NC} Node.js already installed (v${INSTALLED_VER})"
+            exit 0
+        fi
+        LOWEST=$(printf '%s\n%s\n' "$INSTALLED_VER" "$NODE_VERSION" | sort -V | head -1)
+        if [ "$LOWEST" = "$INSTALLED_VER" ] && [ "$INSTALLED_VER" != "$NODE_VERSION" ]; then
+            echo -e "${YELLOW}[INFO]${NC} Node.js v${INSTALLED_VER} -> v${NODE_VERSION} (upgrading)"
+        else
+            echo -e "${GREEN}[SKIP]${NC} Node.js v${INSTALLED_VER} is newer than target v${NODE_VERSION}"
+            exit 0
+        fi
     else
         echo -e "${YELLOW}[INFO]${NC} Node.js exists but broken — reinstalling"
     fi

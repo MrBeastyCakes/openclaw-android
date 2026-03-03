@@ -167,6 +167,11 @@ if [ "$IS_GLIBC" = false ]; then
     fi
 fi
 
+# Update Node.js if a newer version is available
+if [ "$IS_GLIBC" = true ]; then
+    bash "$RELEASE_TMP/scripts/install-nodejs.sh" || true
+fi
+
 bash "$RELEASE_TMP/scripts/setup-env.sh"
 
 GLIBC_NODE_DIR="$PROJECT_DIR/node"

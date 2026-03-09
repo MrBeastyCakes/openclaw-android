@@ -234,7 +234,6 @@ else
     else
         echo -e "${YELLOW}[SKIP]${NC} OpenCode not installed"
     fi
-    fi
 fi
 
 update_ai_tool() {

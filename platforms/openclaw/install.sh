@@ -36,6 +36,13 @@ npm install -g openclaw@latest --ignore-scripts
 echo ""
 echo -e "${GREEN}[OK]${NC}   OpenClaw installed"
 
+# Fix native bindings broken by --ignore-scripts (npm/cli#4828 workaround)
+OPENCLAW_DIR="$(npm root -g)/openclaw"
+if [ -d "$OPENCLAW_DIR/node_modules/@snazzah/davey" ]; then
+    echo "Installing native bindings for @snazzah/davey..."
+    (cd "$OPENCLAW_DIR" && npm install @snazzah/davey --no-fund --no-audit --no-save 2>/dev/null) || true
+fi
+
 bash "$SCRIPT_DIR/patches/openclaw-apply-patches.sh"
 
 echo ""

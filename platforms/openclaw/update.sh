@@ -32,6 +32,17 @@ else
     fi
 fi
 
+# Fix native bindings broken by --ignore-scripts (npm/cli#4828 workaround)
+# Packages like @snazzah/davey use platform-specific optional deps that get
+# skipped when --ignore-scripts is used. Reinstall them without the flag.
+OPENCLAW_DIR="$(npm root -g)/openclaw"
+if [ -d "$OPENCLAW_DIR/node_modules/@snazzah/davey" ]; then
+    if ! node -e "require('$OPENCLAW_DIR/node_modules/@snazzah/davey')" 2>/dev/null; then
+        echo "Fixing native bindings for @snazzah/davey..."
+        (cd "$OPENCLAW_DIR" && npm install @snazzah/davey --no-fund --no-audit --no-save 2>/dev/null) || true
+    fi
+fi
+
 bash "$SCRIPT_DIR/patches/openclaw-apply-patches.sh"
 
 if [ "$OPENCLAW_UPDATED" = true ]; then

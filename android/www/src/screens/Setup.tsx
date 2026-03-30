@@ -79,6 +79,7 @@ const TIPS = [
 export function Setup({ onComplete }: Props) {
   const { navigate } = useRoute()
   const { showToast, ToastContainer } = useToast()
+  void navigate // suppress unused warning
   const [phase, setPhase] = useState<SetupPhase>('platform-select')
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState('')
@@ -127,11 +128,12 @@ export function Setup({ onComplete }: Props) {
   useNativeEvent('setup_progress', onProgress)
 
   // Listen for errors
-  const onError = useCallback((data: { error?: string }) => {
-    if (data.error) {
-      setError(data.error)
+  const onError = useCallback((data: unknown) => {
+    const d = data as { error?: string }
+    if (d.error) {
+      setError(d.error)
       setPhase('error')
-      showToast(`Error: ${data.error}`, 'error')
+      showToast(`Error: ${d.error}`, 'error')
     }
   }, [showToast])
   useNativeEvent('setup_error', onError)
@@ -150,7 +152,7 @@ export function Setup({ onComplete }: Props) {
     })
   }
 
-  function calculateEstimatedTime(): string {
+  function calculateEstimatedTime(): number {
     const baseTime = 3 * 60 // 3 minutes base
     let toolTime = 0
     selectedTools.forEach(toolId => {
@@ -160,9 +162,7 @@ export function Setup({ onComplete }: Props) {
         toolTime += minutes * 60
       }
     })
-    const totalSeconds = baseTime + toolTime
-    const minutes = Math.ceil(totalSeconds / 60)
-    return `${minutes} min`
+    return baseTime + toolTime
   }
 
   function handleStartSetup() {
@@ -264,7 +264,9 @@ export function Setup({ onComplete }: Props) {
 
   // --- Tool Select ---
   if (phase === 'tool-select') {
-    const estimatedTimeStr = calculateEstimatedTime()
+    const totalSeconds = calculateEstimatedTime()
+    const minutes = Math.ceil(totalSeconds / 60)
+    const estimatedTimeStr = `${minutes} min`
     
     return (
       <div className="page">

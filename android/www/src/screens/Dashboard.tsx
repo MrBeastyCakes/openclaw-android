@@ -72,9 +72,10 @@ export function Dashboard() {
   }, [])
 
   // Listen for command completions
-  const onCommandOutput = useCallback((data: { callbackId?: string; data?: string; done?: boolean }) => {
-    if (data.done && data.callbackId?.startsWith('cmd_')) {
-      setRecentCommands(prev => [data.callbackId!.replace('cmd_', ''), ...prev].slice(0, 5))
+  const onCommandOutput = useCallback((data: unknown) => {
+    const d = data as { callbackId?: string; data?: string; done?: boolean }
+    if (d.done && d.callbackId?.startsWith('cmd_')) {
+      setRecentCommands(prev => [d.callbackId!.replace('cmd_', ''), ...prev].slice(0, 5))
     }
   }, [])
   useNativeEvent('command_output', onCommandOutput)

@@ -12,6 +12,7 @@ import com.openclaw.androidclient.data.model.DeviceIdentity
 import com.openclaw.androidclient.data.model.GatewayEvent
 import com.openclaw.androidclient.data.model.ROLE_OPERATOR
 import com.openclaw.androidclient.data.model.SendMessageResult
+import com.openclaw.androidclient.data.model.buildAbortParams
 import com.openclaw.androidclient.data.model.buildConnectParams
 import com.openclaw.androidclient.data.model.buildHistoryParams
 import com.openclaw.androidclient.data.model.buildSendParams
@@ -43,6 +44,7 @@ class ChatRepository(context: Context) {
     private val _status = MutableStateFlow("Ready")
     private val _isConnected = MutableStateFlow(false)
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.Disconnected)
+    private val _currentRunId = MutableStateFlow<String?>(null)
     private val streamingIdsByRun = ConcurrentHashMap<String, String>()
     private val deviceIdentity: DeviceIdentity = deviceAuthStore.loadOrCreateIdentity()
 
@@ -67,6 +69,7 @@ class ChatRepository(context: Context) {
     val status: StateFlow<String> = _status.asStateFlow()
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
+    val currentRunId: StateFlow<String?> = _currentRunId.asStateFlow()
 
     fun loadSavedConfig(): ConnectionConfig = ConnectionConfig(
         gatewayUrl = prefs.getString(KEY_GATEWAY_URL, com.openclaw.androidclient.data.model.DEFAULT_GATEWAY_URL).orEmpty(),
@@ -115,12 +118,24 @@ class ChatRepository(context: Context) {
         appendMessage(ChatMessage(id = UUID.randomUUID().toString(), role = "user", text = trimmed))
         val runId = response.payload?.let { it as? JsonObject }?.string("runId")
         if (runId != null) {
+            _currentRunId.value = runId
             val placeholderId = UUID.randomUUID().toString()
             streamingIdsByRun[runId] = placeholderId
             appendMessage(ChatMessage(id = placeholderId, role = "assistant", text = "", isStreaming = true))
         }
         _status.value = "Waiting for assistant…"
         return SendMessageResult.Success
+    }
+
+    suspend fun abortRun(): SendMessageResult {
+        val config = activeConfig ?: return SendMessageResult.Failure("Not connected")
+        val runId = _currentRunId.value ?: return SendMessageResult.Failure("No active run")
+        val response = socketClient.request(
+            method = "chat.abort",
+            params = buildAbortParams(config.sessionKey, runId),
+        )
+        return if (response.ok) SendMessageResult.Success
+        else SendMessageResult.Failure(response.errorMessage ?: "abort failed")
     }
 
     fun close() {
@@ -202,6 +217,7 @@ class ChatRepository(context: Context) {
             "final" -> {
                 upsertStreamingMessage(targetId, text, false)
                 streamingIdsByRun.remove(runId)
+                if (_currentRunId.value == runId) _currentRunId.value = null
                 _status.value = "Response complete"
             }
 
@@ -209,12 +225,14 @@ class ChatRepository(context: Context) {
                 val errorText = payload.string("errorMessage") ?: "Unknown gateway error"
                 upsertStreamingMessage(targetId, errorText, false)
                 streamingIdsByRun.remove(runId)
+                if (_currentRunId.value == runId) _currentRunId.value = null
                 _status.value = errorText
             }
 
             "aborted" -> {
                 upsertStreamingMessage(targetId, "[aborted]", false)
                 streamingIdsByRun.remove(runId)
+                if (_currentRunId.value == runId) _currentRunId.value = null
                 _status.value = "Run aborted"
             }
         }

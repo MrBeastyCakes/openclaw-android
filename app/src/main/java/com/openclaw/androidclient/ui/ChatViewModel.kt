@@ -29,6 +29,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             sessionKey = saved.sessionKey,
         )
 
+        if (saved.gatewayUrl.isNotBlank() && saved.gatewayToken.isNotBlank() && saved.sessionKey.isNotBlank()) {
+            connect()
+        }
+
         viewModelScope.launch {
             repository.messages.collectLatest { messages ->
                 _uiState.value = _uiState.value.copy(messages = messages)
@@ -37,9 +41,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             repository.status.collectLatest { status ->
-                _uiState.value = _uiState.value.copy(
-                    statusMessage = status,
-                )
+                _uiState.value = _uiState.value.copy(statusMessage = status)
             }
         }
 
@@ -49,6 +51,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     connectionStatus = connectionStatus,
                     isConnecting = connectionStatus == ConnectionStatus.Connecting || connectionStatus == ConnectionStatus.Authenticating,
                 )
+            }
+        }
+
+        viewModelScope.launch {
+            repository.currentRunId.collectLatest { runId ->
+                _uiState.value = _uiState.value.copy(currentRunId = runId)
             }
         }
     }
@@ -100,6 +108,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             connectionStatus = ConnectionStatus.Disconnected,
             statusMessage = "Disconnected",
         )
+    }
+
+    fun abort() {
+        viewModelScope.launch { repository.abortRun() }
     }
 
     fun sendMessage() {

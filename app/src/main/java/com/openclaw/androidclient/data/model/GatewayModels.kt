@@ -51,6 +51,7 @@ data class ChatUiState(
     val isConnecting: Boolean = false,
     val isSending: Boolean = false,
     val messages: List<ChatMessage> = emptyList(),
+    val currentRunId: String? = null,
 )
 
 sealed interface GatewayEvent {
@@ -171,6 +172,11 @@ fun buildSendParams(sessionKey: String, message: String, idempotencyKey: String)
     put("sessionKey", sessionKey)
     put("message", message)
     put("idempotencyKey", idempotencyKey)
+}
+
+fun buildAbortParams(sessionKey: String, runId: String): JsonObject = buildJsonObject {
+    put("sessionKey", sessionKey)
+    put("runId", runId)
 }
 
 fun generateIdempotencyKey(): String = UUID.randomUUID().toString()

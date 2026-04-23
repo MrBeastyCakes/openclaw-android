@@ -1,5 +1,10 @@
 package com.openclaw.androidclient.ui
 
+import androidx.compose.animation.core.InfiniteRepeatableSpec
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,22 +20,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,47 +52,80 @@ import com.openclaw.androidclient.data.model.ChatMessage
 import com.openclaw.androidclient.data.model.ChatUiState
 import com.openclaw.androidclient.data.model.ConnectionStatus
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(viewModel: ChatViewModel) {
+fun ChatScreen(
+    viewModel: ChatViewModel,
+    onNavigateToSettings: () -> Unit,
+) {
     val state by viewModel.uiState.collectAsState()
+    val listState = rememberLazyListState()
+
+    // Scroll to bottom when a new message is appended
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) {
+            listState.animateScrollToItem(state.messages.lastIndex)
+        }
+    }
+
+    // Follow streaming deltas only when already at bottom
+    val streamingText = state.messages.lastOrNull()?.takeIf { it.isStreaming }?.text
+    LaunchedEffect(streamingText) {
+        if (streamingText != null && !listState.canScrollForward && state.messages.isNotEmpty()) {
+            listState.scrollToItem(state.messages.lastIndex)
+        }
+    }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    StatusDot(
+                        status = state.connectionStatus,
+                        modifier = Modifier.padding(start = 16.dp),
+                    )
+                },
+                title = {
+                    Text(
+                        text = "OpenClaw",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+                actions = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                },
+            )
+        },
         bottomBar = {
             Composer(
                 state = state,
                 onDraftChange = viewModel::updateDraftMessage,
                 onSend = viewModel::sendMessage,
+                onAbort = viewModel::abort,
             )
         },
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            ConnectionPanel(
+        if (state.messages.isEmpty()) {
+            EmptyState(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 state = state,
-                onGatewayUrlChange = viewModel::updateGatewayUrl,
-                onTokenChange = viewModel::updateToken,
-                onSessionKeyChange = viewModel::updateSessionKey,
-                onConnect = viewModel::connect,
-                onDisconnect = viewModel::disconnect,
             )
-
-            HorizontalDivider()
-
-            if (state.messages.isEmpty()) {
-                EmptyState(modifier = Modifier.weight(1f), state = state)
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(state.messages, key = { it.id }) { message ->
-                        MessageBubble(message = message)
-                    }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(state.messages, key = { it.id }) { message ->
+                    MessageBubble(message = message)
                 }
             }
         }
@@ -87,76 +133,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
 }
 
 @Composable
-private fun ConnectionPanel(
-    state: ChatUiState,
-    onGatewayUrlChange: (String) -> Unit,
-    onTokenChange: (String) -> Unit,
-    onSessionKeyChange: (String) -> Unit,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-) {
-    Column(modifier = Modifier.padding(16.dp)) {
-        Text(
-            text = "OpenClaw gateway",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        StatusChip(status = state.connectionStatus, message = state.statusMessage)
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = state.gatewayUrl,
-            onValueChange = onGatewayUrlChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Gateway WebSocket URL") },
-            singleLine = true,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = state.token,
-            onValueChange = onTokenChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Gateway token") },
-            singleLine = true,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = state.sessionKey,
-            onValueChange = onSessionKeyChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Session key") },
-            singleLine = true,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(
-                onClick = onConnect,
-                enabled = !state.isConnecting && state.connectionStatus != ConnectionStatus.Connected,
-            ) {
-                if (state.isConnecting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                }
-                Text("Connect")
-            }
-
-            TextButton(
-                onClick = onDisconnect,
-                enabled = state.connectionStatus != ConnectionStatus.Disconnected,
-            ) {
-                Text("Disconnect")
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatusChip(status: ConnectionStatus, message: String) {
+fun StatusChip(status: ConnectionStatus, message: String) {
     val background = when (status) {
         ConnectionStatus.Connected -> Color(0xFF12351D)
         ConnectionStatus.Error -> Color(0xFF4A1F1F)
@@ -184,20 +161,51 @@ private fun StatusChip(status: ConnectionStatus, message: String) {
 }
 
 @Composable
+private fun StatusDot(status: ConnectionStatus, modifier: Modifier = Modifier) {
+    val isAnimating = status == ConnectionStatus.Connecting || status == ConnectionStatus.Authenticating
+    val color = when (status) {
+        ConnectionStatus.Connected -> Color(0xFF4CAF50)
+        ConnectionStatus.Error -> Color(0xFFF44336)
+        ConnectionStatus.Connecting, ConnectionStatus.Authenticating -> Color(0xFFFFC107)
+        ConnectionStatus.Disconnected -> Color(0xFF9E9E9E)
+    }
+
+    val transition = rememberInfiniteTransition(label = "status_dot")
+    val pulseAlpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
+        animationSpec = InfiniteRepeatableSpec(tween(600), repeatMode = RepeatMode.Reverse),
+        label = "pulse",
+    )
+
+    Box(
+        modifier = modifier
+            .size(10.dp)
+            .background(
+                color = color.copy(alpha = if (isAnimating) pulseAlpha else 1f),
+                shape = CircleShape,
+            ),
+    )
+}
+
+@Composable
 private fun EmptyState(modifier: Modifier, state: ChatUiState) {
     Box(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = if (state.connectionStatus == ConnectionStatus.Connected) {
                 "Connected. History is empty or still loading."
+            } else if (state.isConnecting) {
+                "Connecting…"
             } else {
-                "Connect to the local OpenClaw gateway to start chatting."
+                "Tap the settings icon to configure the gateway."
             },
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(32.dp),
         )
     }
 }
@@ -212,7 +220,10 @@ private fun MessageBubble(message: ChatMessage) {
     }
     val alignment = if (isUser) Alignment.End else Alignment.Start
 
-    Column(horizontalAlignment = alignment) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = alignment,
+    ) {
         Text(
             text = message.role.replaceFirstChar { it.uppercase() },
             style = MaterialTheme.typography.labelMedium,
@@ -225,17 +236,35 @@ private fun MessageBubble(message: ChatMessage) {
                     .background(containerColor)
                     .padding(12.dp),
             ) {
-                Text(text = message.text.ifBlank { "…" })
                 if (message.isStreaming) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Streaming…",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    StreamingText(text = message.text)
+                } else {
+                    Text(text = message.text.ifBlank { "…" })
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StreamingText(text: String) {
+    val transition = rememberInfiniteTransition(label = "cursor")
+    val cursorAlpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = InfiniteRepeatableSpec(tween(500), repeatMode = RepeatMode.Reverse),
+        label = "blink",
+    )
+
+    Row(verticalAlignment = Alignment.Bottom) {
+        if (text.isNotEmpty()) {
+            Text(text = text)
+        }
+        Text(
+            text = "▋",
+            modifier = Modifier.alpha(cursorAlpha),
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -244,6 +273,7 @@ private fun Composer(
     state: ChatUiState,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
+    onAbort: () -> Unit,
 ) {
     Surface(shadowElevation = 6.dp) {
         Row(
@@ -263,11 +293,25 @@ private fun Composer(
                 minLines = 2,
                 maxLines = 5,
             )
-            Button(
-                onClick = onSend,
-                enabled = state.connectionStatus == ConnectionStatus.Connected && state.draftMessage.isNotBlank() && !state.isSending,
-            ) {
-                Text("Send")
+
+            if (state.currentRunId != null) {
+                Button(
+                    onClick = onAbort,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Stop")
+                }
+            } else {
+                Button(
+                    onClick = onSend,
+                    enabled = state.connectionStatus == ConnectionStatus.Connected
+                            && state.draftMessage.isNotBlank()
+                            && !state.isSending,
+                ) {
+                    Text("Send")
+                }
             }
         }
     }

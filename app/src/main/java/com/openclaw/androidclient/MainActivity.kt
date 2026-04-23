@@ -5,9 +5,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.openclaw.androidclient.ui.ChatScreen
 import com.openclaw.androidclient.ui.ChatViewModel
 import com.openclaw.androidclient.ui.ChatViewModelFactory
+import com.openclaw.androidclient.ui.SettingsScreen
 import com.openclaw.androidclient.ui.theme.OpenClawTheme
 
 class MainActivity : ComponentActivity() {
@@ -22,7 +26,21 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             OpenClawTheme {
-                ChatScreen(viewModel = viewModel)
+                val navController = rememberNavController()
+                NavHost(navController = navController, startDestination = "chat") {
+                    composable("chat") {
+                        ChatScreen(
+                            viewModel = viewModel,
+                            onNavigateToSettings = { navController.navigate("settings") },
+                        )
+                    }
+                    composable("settings") {
+                        SettingsScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
             }
         }
     }

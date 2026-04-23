@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.openclaw.androidclient.data.auth.DeviceAuthStore
 import com.openclaw.androidclient.data.model.ChatMessage
+import com.openclaw.androidclient.data.model.TimelineItem
+import com.openclaw.androidclient.data.model.ToolItem
+import com.openclaw.androidclient.data.model.extractToolItem
 import com.openclaw.androidclient.data.model.ConnectAuthBundle
 import com.openclaw.androidclient.data.model.ConnectionConfig
 import com.openclaw.androidclient.data.model.ConnectionStatus
@@ -40,7 +43,7 @@ class ChatRepository(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val deviceAuthStore = DeviceAuthStore(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    private val _timeline = MutableStateFlow<List<TimelineItem>>(emptyList())
     private val _status = MutableStateFlow("Ready")
     private val _isConnected = MutableStateFlow(false)
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.Disconnected)
@@ -65,7 +68,7 @@ class ChatRepository(context: Context) {
         },
     )
 
-    val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
+    val timeline: StateFlow<List<TimelineItem>> = _timeline.asStateFlow()
     val status: StateFlow<String> = _status.asStateFlow()
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
@@ -80,7 +83,7 @@ class ChatRepository(context: Context) {
     fun connect(config: ConnectionConfig) {
         activeConfig = config
         persistConfig(config)
-        _messages.value = emptyList()
+        _timeline.value = emptyList()
         streamingIdsByRun.clear()
         _status.value = "Opening gateway…"
         _isConnected.value = false
@@ -115,13 +118,13 @@ class ChatRepository(context: Context) {
             return SendMessageResult.Failure(response.errorMessage ?: "chat.send failed")
         }
 
-        appendMessage(ChatMessage(id = UUID.randomUUID().toString(), role = "user", text = trimmed))
+        appendItem(ChatMessage(id = UUID.randomUUID().toString(), role = "user", text = trimmed))
         val runId = response.payload?.let { it as? JsonObject }?.string("runId")
         if (runId != null) {
             _currentRunId.value = runId
             val placeholderId = UUID.randomUUID().toString()
             streamingIdsByRun[runId] = placeholderId
-            appendMessage(ChatMessage(id = placeholderId, role = "assistant", text = "", isStreaming = true))
+            appendItem(ChatMessage(id = placeholderId, role = "assistant", text = "", isStreaming = true))
         }
         _status.value = "Waiting for assistant…"
         return SendMessageResult.Success
@@ -149,12 +152,7 @@ class ChatRepository(context: Context) {
                 handleChallenge()
             }
             is GatewayEvent.Chat -> handleChatEvent(event.payload)
-            is GatewayEvent.SessionTool -> {
-                val text = extractMessageText(event.payload).trim()
-                if (text.isNotEmpty()) {
-                    appendMessage(ChatMessage(UUID.randomUUID().toString(), "tool", text, false))
-                }
-            }
+            is GatewayEvent.SessionTool -> upsertToolItem(extractToolItem(event.payload))
             is GatewayEvent.Unknown -> {
                 if (event.name != "tick") {
                     _status.value = "Event: ${event.name}"
@@ -201,7 +199,7 @@ class ChatRepository(context: Context) {
             return
         }
 
-        _messages.value = extractMessagesFromHistory(response.payload)
+        _timeline.value = extractMessagesFromHistory(response.payload)
         _status.value = "History loaded"
     }
 
@@ -238,14 +236,23 @@ class ChatRepository(context: Context) {
         }
     }
 
-    private fun appendMessage(message: ChatMessage) {
-        _messages.update { current -> current + message }
+    private fun appendItem(item: TimelineItem) {
+        _timeline.update { current -> current + item }
+    }
+
+    private fun upsertToolItem(item: ToolItem) {
+        _timeline.update { current ->
+            val index = current.indexOfFirst { it.id == item.id }
+            if (index >= 0) current.toMutableList().apply { set(index, item) }
+            else current + item
+        }
     }
 
     private fun upsertStreamingMessage(id: String, text: String, isStreaming: Boolean) {
-        _messages.update { current ->
+        _timeline.update { current ->
             val index = current.indexOfFirst { it.id == id }
-            val resolvedText = text.ifBlank { current.getOrNull(index)?.text.orEmpty() }
+            val existing = current.getOrNull(index) as? ChatMessage
+            val resolvedText = text.ifBlank { existing?.text.orEmpty() }
             val updated = ChatMessage(id = id, role = "assistant", text = resolvedText, isStreaming = isStreaming)
             if (index >= 0) {
                 current.toMutableList().apply { set(index, updated) }

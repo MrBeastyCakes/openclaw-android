@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,17 +22,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -41,16 +47,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.openclaw.androidclient.data.model.ChatMessage
 import com.openclaw.androidclient.data.model.ChatUiState
 import com.openclaw.androidclient.data.model.ConnectionStatus
+import com.openclaw.androidclient.data.model.TimelineItem
+import com.openclaw.androidclient.data.model.ToolItem
+import com.openclaw.androidclient.data.model.ToolUseState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,18 +74,16 @@ fun ChatScreen(
     val state by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
-    // Scroll to bottom when a new message is appended
-    LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.lastIndex)
+    LaunchedEffect(state.timeline.size) {
+        if (state.timeline.isNotEmpty()) {
+            listState.animateScrollToItem(state.timeline.lastIndex)
         }
     }
 
-    // Follow streaming deltas only when already at bottom
-    val streamingText = state.messages.lastOrNull()?.takeIf { it.isStreaming }?.text
+    val streamingText = (state.timeline.lastOrNull() as? ChatMessage)?.takeIf { it.isStreaming }?.text
     LaunchedEffect(streamingText) {
-        if (streamingText != null && !listState.canScrollForward && state.messages.isNotEmpty()) {
-            listState.scrollToItem(state.messages.lastIndex)
+        if (streamingText != null && !listState.canScrollForward && state.timeline.isNotEmpty()) {
+            listState.scrollToItem(state.timeline.lastIndex)
         }
     }
 
@@ -108,7 +119,7 @@ fun ChatScreen(
             )
         },
     ) { innerPadding ->
-        if (state.messages.isEmpty()) {
+        if (state.timeline.isEmpty()) {
             EmptyState(
                 modifier = Modifier
                     .fillMaxSize()
@@ -124,8 +135,11 @@ fun ChatScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(state.messages, key = { it.id }) { message ->
-                    MessageBubble(message = message)
+                items(state.timeline, key = { it.id }) { item ->
+                    when (item) {
+                        is ChatMessage -> MessageBubble(message = item)
+                        is ToolItem -> ToolChip(item = item)
+                    }
                 }
             }
         }
@@ -312,6 +326,105 @@ private fun Composer(
                 ) {
                     Text("Send")
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ToolChip(item: ToolItem) {
+    var showSheet by remember { mutableStateOf(false) }
+
+    Surface(
+        onClick = { showSheet = true },
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            when (item.state) {
+                ToolUseState.Running -> CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                )
+                ToolUseState.Done -> Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFF4CAF50),
+                )
+                ToolUseState.Error -> Icon(
+                    Icons.Default.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+            Text(
+                text = item.toolName,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    if (showSheet) {
+        ModalBottomSheet(onDismissRequest = { showSheet = false }) {
+            ToolDetail(item = item)
+        }
+    }
+}
+
+@Composable
+private fun ToolDetail(item: ToolItem) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(item.toolName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        item.inputJson?.let { json ->
+            Text(
+                text = "Input",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Text(
+                    text = json,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    softWrap = false,
+                )
+            }
+        }
+        item.output?.let { output ->
+            Text(
+                text = "Output",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Text(
+                    text = output,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
             }
         }
     }

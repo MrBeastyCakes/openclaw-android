@@ -26,12 +26,27 @@ data class ConnectionConfig(
     val sessionKey: String,
 )
 
+sealed interface TimelineItem {
+    val id: String
+}
+
 data class ChatMessage(
-    val id: String,
+    override val id: String,
     val role: String,
     val text: String,
     val isStreaming: Boolean = false,
-)
+) : TimelineItem
+
+enum class ToolUseState { Running, Done, Error }
+
+data class ToolItem(
+    override val id: String,
+    val toolName: String,
+    val state: ToolUseState,
+    val inputJson: String?,
+    val output: String?,
+    val runId: String,
+) : TimelineItem
 
 enum class ConnectionStatus {
     Disconnected,
@@ -50,7 +65,7 @@ data class ChatUiState(
     val statusMessage: String = "Ready",
     val isConnecting: Boolean = false,
     val isSending: Boolean = false,
-    val messages: List<ChatMessage> = emptyList(),
+    val timeline: List<TimelineItem> = emptyList(),
     val currentRunId: String? = null,
 )
 
@@ -214,7 +229,7 @@ fun extractMessageRole(element: JsonObject): String {
     return nested?.string("role") ?: element.string("role") ?: "system"
 }
 
-fun extractMessagesFromHistory(payload: JsonElement?): List<ChatMessage> {
+fun extractMessagesFromHistory(payload: JsonElement?): List<TimelineItem> {
     val messages = payload
         ?.jsonObject
         ?.get("messages")
@@ -240,6 +255,29 @@ fun extractHelloAuth(payload: JsonElement?): StoredDeviceAuth? {
     val token = auth.string("deviceToken") ?: return null
     val scopes = auth["scopes"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty()
     return StoredDeviceAuth(token = token, scopes = normalizeDeviceScopes(scopes))
+}
+
+fun extractToolItem(payload: JsonObject): ToolItem {
+    val toolName = payload.string("toolName") ?: payload.string("name") ?: "tool"
+    val callId = payload.string("toolCallId") ?: payload.string("id") ?: UUID.randomUUID().toString()
+    val stateStr = payload.string("state") ?: payload.string("status") ?: "result"
+    val state = when (stateStr) {
+        "start", "running" -> ToolUseState.Running
+        "error" -> ToolUseState.Error
+        else -> ToolUseState.Done
+    }
+    val runId = payload.string("runId").orEmpty()
+    val inputJson = payload["input"]?.let { if (it !is JsonNull) it.toString() else null }
+    val output = (payload["output"] ?: payload["result"])
+        ?.let { extractMessageText(it).trim().takeIf(String::isNotEmpty) }
+    return ToolItem(
+        id = callId,
+        toolName = toolName,
+        state = state,
+        inputJson = inputJson,
+        output = output,
+        runId = runId,
+    )
 }
 
 fun extractPairingRequestId(response: GatewayResponse): String? {

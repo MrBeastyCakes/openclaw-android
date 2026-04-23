@@ -34,8 +34,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            repository.messages.collectLatest { messages ->
-                _uiState.value = _uiState.value.copy(messages = messages)
+            repository.timeline.collectLatest { timeline ->
+                _uiState.value = _uiState.value.copy(timeline = timeline)
             }
         }
 
